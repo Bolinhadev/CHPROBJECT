@@ -1,144 +1,16 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>YOLOv8 Detecção de Objetos em Tempo Real</title>
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-    <style>
-      body { display: flex; flex-direction: column; align-items: center; }
-      #videoElement { display: none; }
-      #canvasOutput { border: 1px solid black; }
-    </style>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
 </head>
 <body>
-    <h1>Detecção de Objetos em Tempo Real</h1>
-    <video id="videoElement" width="640" height="480" autoplay></video>
-    <canvas id="canvasOutput" width="640" height="480"></canvas>
-    <script>
-      const video = document.getElementById('videoElement');
-      const canvas = document.getElementById('canvasOutput');
-      const ctx = canvas.getContext('2d');
-      let model;
-
-      async function setupCamera() {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-          video.srcObject = stream;
-          return new Promise(resolve => {
-              video.onloadedmetadata = () => {
-                  resolve(video);
-              };
-          });
-      }
-
-      async function loadModel() {
-          try {
-              model = await ort.InferenceSession.create("yolov8n.onnx");
-              console.log("Modelo carregado com sucesso");
-          } catch (error) {
-              console.error("Erro ao carregar o modelo:", error);
-          }
-      }
-
-      async function detectObjects() {
-          if (!model) {
-              console.log("Modelo ainda não carregado");
-              return;
-          }
-          const [input, imgWidth, imgHeight] = await prepareInput();
-          const output = await runModel(input);
-          const boxes = processOutput(output, imgWidth, imgHeight);
-          drawBoxes(boxes);
-          requestAnimationFrame(detectObjects);
-      }
-
-      async function prepareInput() {
-          ctx.drawImage(video, 0, 0, 640, 480);
-          const imgData = ctx.getImageData(0, 0, 640, 480);
-          const input = new Float32Array(3 * 640 * 480);
-          for (let i = 0; i < imgData.data.length; i += 4) {
-              input[i / 4] = imgData.data[i] / 255.0;
-              input[640 * 480 + i / 4] = imgData.data[i + 1] / 255.0;
-              input[2 * 640 * 480 + i / 4] = imgData.data[i + 2] / 255.0;
-          }
-          return [input, video.videoWidth, video.videoHeight];
-      }
-
-      async function runModel(input) {
-          const tensor = new ort.Tensor("float32", input, [1, 3, 480, 640]);
-          const outputs = await model.run({ images: tensor });
-          return outputs["output0"].data;
-      }
-
-      function processOutput(output, imgWidth, imgHeight) {
-          const boxes = [];
-          const numClasses = 80;
-          const numAnchors = output.length / (numClasses + 5);
-          
-          for (let i = 0; i < numAnchors; i++) {
-              const offset = i * (numClasses + 5);
-              const x = output[offset];
-              const y = output[offset + 1];
-              const w = output[offset + 2];
-              const h = output[offset + 3];
-              const confidence = output[offset + 4];
-              
-              if (confidence > 0.5) {
-                  const classScores = output.slice(offset + 5, offset + 5 + numClasses);
-                  const classId = classScores.indexOf(Math.max(...classScores));
-                  const label = yolo_classes[classId];
-                  
-                  const x1 = (x - w/2) * imgWidth / 640;
-                  const y1 = (y - h/2) * imgHeight / 480;
-                  const x2 = (x + w/2) * imgWidth / 640;
-                  const y2 = (y + h/2) * imgHeight / 480;
-                  
-                  boxes.push([x1, y1, x2, y2, label, confidence]);
-              }
-          }
-          
-          return boxes;
-      }
-
-      function drawBoxes(boxes) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          ctx.lineWidth = 3;
-          ctx.font = "18px Arial";
-          
-          boxes.forEach(([x1, y1, x2, y2, label, confidence]) => {
-              ctx.strokeStyle = "#00FF00";
-              ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-              
-              ctx.fillStyle = "#00FF00";
-              const textWidth = ctx.measureText(label).width;
-              ctx.fillRect(x1, y1 - 25, textWidth + 10, 25);
-              
-              ctx.fillStyle = "#000000";
-              ctx.fillText(label, x1 + 5, y1 - 7);
-          });
-      }
-
-      const yolo_classes = [
-          'pessoa', 'bicicleta', 'carro', 'moto', 'avião', 'ônibus', 'trem', 'caminhão', 'barco',
-          'semáforo', 'hidrante', 'placa de pare', 'parquímetro', 'banco', 'pássaro', 'gato', 'cachorro', 'cavalo',
-          'ovelha', 'vaca', 'elefante', 'urso', 'zebra', 'girafa', 'mochila', 'guarda-chuva', 'bolsa', 'gravata', 'mala',
-          'frisbee', 'esquis', 'snowboard', 'bola esportiva', 'pipa', 'taco de beisebol', 'luva de beisebol', 'skate',
-          'prancha de surfe', 'raquete de tênis', 'garrafa', 'taça de vinho', 'xícara', 'garfo', 'faca', 'colher', 'tigela', 'banana', 'maçã',
-          'sanduíche', 'laranja', 'brócolis', 'cenoura', 'cachorro-quente', 'pizza', 'rosquinha', 'bolo', 'cadeira', 'sofá', 'vaso de planta',
-          'cama', 'mesa de jantar', 'vaso sanitário', 'TV', 'laptop', 'mouse', 'controle remoto', 'teclado', 'celular', 'micro-ondas', 'forno',
-          'torradeira', 'pia', 'geladeira', 'livro', 'relógio', 'vaso', 'tesoura', 'ursinho de pelúcia', 'secador de cabelo', 'escova de dentes'
-      ];
-
-      async function main() {
-          console.log("Iniciando...");
-          await setupCamera();
-          console.log("Câmera configurada");
-          await loadModel();
-          console.log("Iniciando detecção");
-          detectObjects();
-      }
-
-      main().catch(console.error);
-    </script>
+    <!-- Load TensorFlow.js. This is required to use MobileNet. -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.1"> </script>
+<!-- Load the MobileNet model. -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@1.0.0"> </script>
+    
 </body>
 </html>
